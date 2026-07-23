@@ -73,7 +73,7 @@ function addStatusButton(){
   var actions=document.querySelector('.top-actions');
   if(!actions||document.getElementById('v6CloudButton'))return;
   var state=String(localStorage.getItem(STATE_KEY)||'檢查中'),button=document.createElement('button');
-  button.className='btn';button.id='v6CloudButton';button.type='button';button.title='首頁、專案、確認、活動、提醒、官網、檔案、SOP 與經驗的 Google 後台狀態';button.textContent='☁ 全平台：'+state;button.dataset.mobileLabel=shortState(state);button.onclick=function(){v6Cloud.syncNow()};
+  button.className='btn';button.id='v6CloudButton';button.type='button';button.title='設定與查看整個工作台的 Google 後台同步';button.textContent='☁ 全平台：'+state;button.dataset.mobileLabel=shortState(state);button.onclick=function(){if(window.printApp&&printApp.configureApi)printApp.configureApi(false);else v6Cloud.syncNow()};
   actions.insertBefore(button,actions.firstChild);
 }
 
