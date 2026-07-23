@@ -9,7 +9,7 @@ var STATE_KEY='creative_ops_v6_cloud_state';
 var COLLECTIONS=[
   'projects','tasks','confirmations','routines','events','products','websites',
   'websiteChanges','knowledge','sops','files','workflowTemplates','closeouts',
-  'inventoryRecords','activity'
+  'inventoryRecords','financeRecords','attendanceRecords','focusSessions','activity'
 ];
 var timer=null;
 var syncing=false;
