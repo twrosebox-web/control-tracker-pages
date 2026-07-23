@@ -73,8 +73,19 @@ function addStatusButton(){
   var actions=document.querySelector('.top-actions');
   if(!actions||document.getElementById('v6CloudButton'))return;
   var state=String(localStorage.getItem(STATE_KEY)||'檢查中'),button=document.createElement('button');
-  button.className='btn';button.id='v6CloudButton';button.type='button';button.title='設定與查看整個工作台的 Google 後台同步';button.textContent='☁ 全平台：'+state;button.dataset.mobileLabel=shortState(state);button.onclick=function(){if(window.printApp&&printApp.configureApi)printApp.configureApi(false);else v6Cloud.syncNow()};
+  button.className='btn';button.id='v6CloudButton';button.type='button';button.title='設定與查看整個工作台的 Google 後台同步';button.textContent='☁ 全平台：'+state;button.dataset.mobileLabel=shortState(state);button.onclick=openSettings;
   actions.insertBefore(button,actions.firstChild);
+}
+
+function openSettings(){
+  if(window.printApp&&printApp.configureApi)printApp.configureApi(false);
+  else syncNow();
+}
+
+function addSideEntry(){
+  var aside=document.getElementById('mainNav'),side=aside&&aside.querySelector('.side-actions');
+  if(!side||document.getElementById('v6CloudSide'))return;
+  side.insertAdjacentHTML('beforebegin','<div class="nav-group" id="v6CloudSide"><div class="nav-label">系統與資料</div><button class="nav" id="v6CloudSettingsButton" onclick="v6Cloud.openSettings()">☁　全平台同步設定</button></div>');
 }
 
 function readTombstones(){
@@ -217,10 +228,11 @@ function scheduleSync(action,delay){
 
 function start(){
   addStatusButton();
+  addSideEntry();
   lastHashes=snapshotHashes(app.getData());
   if(apiUrl()&&apiToken())syncNow();else setState('僅本機');
 }
 
-window.v6Cloud={start:start,syncNow:syncNow,scheduleSync:scheduleSync,noteDeletion:noteDeletion,getState:function(){return localStorage.getItem(STATE_KEY)||''}};
+window.v6Cloud={start:start,openSettings:openSettings,syncNow:syncNow,scheduleSync:scheduleSync,noteDeletion:noteDeletion,getState:function(){return localStorage.getItem(STATE_KEY)||''}};
 setTimeout(start,600);
 })();
