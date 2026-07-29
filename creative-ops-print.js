@@ -1,6 +1,6 @@
 (function(){
-var FOLDER_URL='';
-var SHEET_URL='';
+var FOLDER_URL='https://drive.google.com/drive/folders/1LHRMzwmwkt_ZYre6q2HVIH2R4vg-mOd8';
+var SHEET_URL='https://docs.google.com/spreadsheets/d/1nQpJvSSY6zek5IYDXzGGcmLSmya-Gkk67LC6XR4t0GY/edit#gid=621921193';
 var API_STORAGE_KEY='creative_ops_print_api_url';
 var API_TOKEN_KEY='creative_ops_print_api_token';
 var API_URL=String(window.PRINT_API_URL||localStorage.getItem(API_STORAGE_KEY)||'').trim();
@@ -19,9 +19,9 @@ function inspections(){return data().printInspections}
 function item(id){return items().find(function(x){return x.id===id})}
 function order(id){return orders().find(function(x){return x.id===id})}
 function inspectionFor(id){return inspections().find(function(x){return x.workOrderId===id})}
-function today(){return new Date().toISOString().slice(0,10)}
+function today(){return new Date(Date.now()+8*3600000).toISOString().slice(0,10)}
 function dayDiff(value){if(!value)return 999;var a=new Date(today()+'T00:00:00'),b=new Date(value+'T00:00:00');return Math.ceil((b-a)/86400000)}
-function modal(title,sub,body){var box=document.getElementById('modal');box.className='modal wide';box.innerHTML='<div class="modal-head"><div><h2>'+esc(title)+'</h2><p>'+esc(sub)+'</p></div><button class="btn icon" onclick="printApp.close()">×</button></div>'+body;document.getElementById('modalBackdrop').classList.add('open')}
+function modal(title,sub,body){var box=document.getElementById('modal');box.className='modal wide';box.innerHTML='<div class="modal-head"><div><h2>'+esc(title)+'</h2><p>'+esc(sub)+'</p></div><button class="btn icon" onclick="app.requestCloseModal()">×</button></div>'+body;document.getElementById('modalBackdrop').classList.add('open')}
 function close(){document.getElementById('modalBackdrop').classList.remove('open')}
 function tag(text,kind){return'<span class="tag '+(kind||'gray')+'">'+esc(text)+'</span>'}
 function input(id,label,value,placeholder,type,full){return'<div class="field '+(full?'full':'')+'"><label>'+label+'</label><input id="'+id+'" type="'+(type||'text')+'" value="'+esc(value||'')+'" placeholder="'+esc(placeholder||'')+'"></div>'}

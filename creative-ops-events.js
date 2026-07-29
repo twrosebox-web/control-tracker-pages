@@ -1,5 +1,5 @@
 (function(){
-function today(){return new Date().toISOString().slice(0,10)}
+function today(){return new Date(Date.now()+8*3600000).toISOString().slice(0,10)}
 function addDays(date,n){var d=new Date(date+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
 function createReminders(){var db=app.getData();var events=(db.events||[]).filter(function(e){return(e.endDate||e.startDate)>=today()});var added=0;events.forEach(function(e){String(e.itemsText||'').split('\n').map(function(line){return line.split('|').map(function(v){return v.trim()})}).filter(function(parts){return parts[0]}).forEach(function(parts){var name=parts[0]+(parts[2]?'（'+parts[2]+'）':'');var exists=(db.tasks||[]).some(function(t){return t.eventId===e.id&&t.name===name});if(exists)return;var offset=Number(parts[1]||0);db.tasks.push({id:'task_event_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),name:name,eventId:e.id,projectId:'',dueDate:addDays(e.startDate,-offset),phase:parts[0].indexOf('FB')>=0||parts[0].indexOf('官網')>=0?'publish':parts[0].indexOf('確認')>=0?'review':'make',status:'open',createdAt:new Date().toISOString()});added++})});if(!added){alert('近期活動提醒都已建立，沒有重複新增。');return}app.saveData('建立2026展售活動提醒');alert('已建立 '+added+' 項近期活動提醒；首頁會依到期日顯示。')}
 window.eventSeedApp={createReminders:createReminders};

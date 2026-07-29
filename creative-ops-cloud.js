@@ -9,8 +9,10 @@ var STATE_KEY='creative_ops_v6_cloud_state';
 var COLLECTIONS=[
   'projects','tasks','confirmations','routines','events','products','websites',
   'websiteChanges','knowledge','sops','files','workflowTemplates','closeouts',
-  'inventoryRecords','financeRecords','attendanceRecords','focusSessions','activity'
+  'inventoryRecords','financeRecords','attendanceRecords','focusSessions','activity',
+  'assistantMemory','assistantRuns','assistantSuggestions'
 ];
+var SERVER_OWNED_COLLECTIONS=['assistantMemory','assistantRuns','assistantSuggestions'];
 var timer=null;
 var syncing=false;
 var pending=false;
@@ -41,6 +43,7 @@ function snapshotHashes(db){
 function markChangedRecords(){
   var db=app.getData(),stamp=now(),changed=false;
   COLLECTIONS.forEach(function(collection){
+    if(SERVER_OWNED_COLLECTIONS.indexOf(collection)>=0)return;
     (Array.isArray(db[collection])?db[collection]:[]).forEach(function(record){
       if(!record||!record.id)return;
       var key=keyOf(collection,record.id),hash=signature(record);
@@ -97,7 +100,7 @@ function writeTombstones(list){
 }
 
 function noteDeletion(collection,id,record){
-  if(COLLECTIONS.indexOf(collection)<0||!id)return;
+  if(COLLECTIONS.indexOf(collection)<0||SERVER_OWNED_COLLECTIONS.indexOf(collection)>=0||!id)return;
   var list=readTombstones(),deletedAt=now(),key=keyOf(collection,id),found=list.find(function(x){return keyOf(x.collection,x.id)===key});
   if(found)found.deletedAt=deletedAt;
   else list.push({collection:collection,id:id,deletedAt:deletedAt,lastKnownUpdatedAt:record&&(record.updatedAt||record.createdAt||'')});
@@ -140,6 +143,7 @@ function metaRecord(db){
 function flattenLocal(db){
   var fallback=db.updatedAt||now(),records=[];
   COLLECTIONS.forEach(function(collection){
+    if(SERVER_OWNED_COLLECTIONS.indexOf(collection)>=0)return;
     var list=Array.isArray(db[collection])?db[collection]:[];
     list.forEach(function(record){
       if(!record||!record.id)return;
@@ -153,6 +157,10 @@ function flattenLocal(db){
 
 function applyRemote(result){
   var db=app.getData(),changed=false,localDeletes={};
+  SERVER_OWNED_COLLECTIONS.forEach(function(collection){
+    var authoritative=(result.records||[]).filter(function(item){return item.collection===collection&&item.record}).map(function(item){return item.record}),current=Array.isArray(db[collection])?db[collection]:[];
+    if(JSON.stringify(current)!==JSON.stringify(authoritative)){db[collection]=authoritative;changed=true}
+  });
   readTombstones().forEach(function(t){localDeletes[keyOf(t.collection,t.id)]=millis(t.deletedAt)});
   (result.tombstones||[]).forEach(function(t){
     if(COLLECTIONS.indexOf(t.collection)<0)return;
@@ -170,7 +178,7 @@ function applyRemote(result){
       db.version=Math.max(Number(db.version||0),Number(remote.version||0));
       return;
     }
-    if(COLLECTIONS.indexOf(item.collection)<0||!item.record)return;
+    if(COLLECTIONS.indexOf(item.collection)<0||SERVER_OWNED_COLLECTIONS.indexOf(item.collection)>=0||!item.record)return;
     var remoteTime=millis(item.updatedAt||item.record.updatedAt||item.record.createdAt||item.record.at);
     if((localDeletes[keyOf(item.collection,item.id)]||0)>=remoteTime)return;
     var list=Array.isArray(db[item.collection])?db[item.collection]:(db[item.collection]=[]),index=list.findIndex(function(x){return String(x.id)===String(item.id)});
@@ -193,7 +201,7 @@ function syncOnce(){
   setState('同步中…');
   return apiJsonp('listWorkspace').then(function(remote){
     applyRemote(remote);
-    var db=app.getData(),records=flattenLocal(db),tombstones=readTombstones();
+    var db=app.getData(),records=flattenLocal(db),tombstones=readTombstones().filter(function(item){return SERVER_OWNED_COLLECTIONS.indexOf(item.collection)<0});
     localStorage.setItem(DATA_KEY,JSON.stringify(db));
     return apiPost('syncWorkspace',{records:records,tombstones:tombstones});
   }).then(function(result){
