@@ -10,9 +10,9 @@ var COLLECTIONS=[
   'projects','tasks','confirmations','routines','events','products','websites',
   'websiteChanges','knowledge','sops','files','workflowTemplates','closeouts',
   'inventoryRecords','financeRecords','attendanceRecords','focusSessions','activity',
-  'assistantMemory','assistantRuns','assistantSuggestions'
+  'assistantMemory','assistantRuns','assistantSuggestions','assistantPlanningSessions'
 ];
-var SERVER_OWNED_COLLECTIONS=['assistantMemory','assistantRuns','assistantSuggestions'];
+var SERVER_OWNED_COLLECTIONS=['assistantMemory','assistantRuns','assistantSuggestions','assistantPlanningSessions'];
 var timer=null;
 var syncing=false;
 var pending=false;

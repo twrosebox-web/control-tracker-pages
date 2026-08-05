@@ -19,13 +19,15 @@ var order=id=>(d().printWorkOrders||[]).find(x=>x.id===id);
 var option=(list,selected,label)=>list.map(x=>'<option value="'+esc(x.id)+'" '+(x.id===selected?'selected':'')+'>'+esc(label?label(x):x.name)+'</option>').join('');
 
 function modal(title,sub,body,wide){
+  if(app.isModalBusy&&app.isModalBusy()){toast('圖片上傳中，請稍候。');return false}
   var box=document.getElementById('modal');
   box.className='modal'+(wide?' wide':'');
   box.innerHTML='<div class="modal-head"><div><h2>'+esc(title)+'</h2><p>'+esc(sub||'')+'</p></div><button class="btn icon" onclick="app.requestCloseModal()">×</button></div>'+body;
   document.getElementById('modalBackdrop').classList.add('open');
+  return true;
 }
-function toast(text){var e=document.getElementById('toast');e.textContent=text;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),2200)}
-function save(action){app.saveData(action)}
+function toast(text){if(app.lastSaveFailed&&app.lastSaveFailed())return;var e=document.getElementById('toast');e.textContent=text;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),2200)}
+function save(action){return app.saveData(action)}
 
 var defaultTemplates=[
  {id:'tpl_booth',name:'擺攤／展售活動',type:'booth',reminderDays:21,tasks:['確認活動與攤位資訊','確認促銷內容與商品','製作官網 Banner 1700×730','製作手機版 Banner','製作 FB 貼文素材','官網 A 上線並確認','官網 B 上線並確認','FB 發布並確認','活動後整理圖片與注意事項']},
@@ -35,6 +37,56 @@ var defaultTemplates=[
 ];
 
 function mergeSeedCollection(target,source){var existing=new Set(target.map(x=>x&&x.id));var added=0;(source||[]).forEach(x=>{if(x&&x.id&&!existing.has(x.id)){target.push(JSON.parse(JSON.stringify(x)));existing.add(x.id);added++}});return added}
+var LEGACY_IMPORT_MONTH_IDS=['wo_legacy_0007','wo_legacy_0008','wo_legacy_0009','wo_legacy_0017','wo_legacy_0018','wo_legacy_0025','wo_legacy_0026','wo_legacy_0027','wo_legacy_0034','wo_legacy_0035','wo_legacy_0042','wo_legacy_0047','wo_legacy_0050','wo_legacy_0051','wo_legacy_0096'];
+var LEGACY_IMPORT_OPEN_RULES={
+  wo_legacy_0034:{title:'60G 小花醬 瓶身貼－2025/09 叫貨印製',resolution:'已自動分類為未完成工單：原文有叫貨印製，但沒有足夠資料證明已完成。'},
+  wo_legacy_0094:{title:'24入花茶－2026 下半年預計',resolution:'已自動分類為未完成工單：保留 2026 下半年預計事項。'},
+  wo_legacy_0095:{title:'面膜袋－叫貨事項（日期未定）',resolution:'已自動分類為未完成工單：保留叫貨內容，日期維持未定。'}
+};
+var LEGACY_QUANTITY_CORRECTIONS={
+  wo_legacy_0030:{from:'3000張、18個',to:'3000張',reason:'排除保存期限 18 個月'},
+  wo_legacy_0036:{from:'6000張、12個、18個',to:'6000張',reason:'排除保存期限 12／18 個月'},
+  wo_legacy_0046:{from:'30本、3個',to:'30本',reason:'排除裝訂使用 3 個針'},
+  wo_legacy_0051:{from:'2個、2000張',to:'2000張',reason:'排除 2 個特別色'},
+  wo_legacy_0075:{from:'500張、2000張',to:'500張',reason:'2000 張是計價基準，實際印量為 500 張'}
+};
+function resolveLegacyImportReviews(){
+  var x=d(),stamp=now(),changed=0,monthSet=new Set(LEGACY_IMPORT_MONTH_IDS),allIds=new Set(LEGACY_IMPORT_MONTH_IDS.concat(Object.keys(LEGACY_IMPORT_OPEN_RULES)));
+  (x.printWorkOrders||[]).forEach(function(w){
+    if(!allIds.has(w.id)||w.needsReview!==true)return;
+    var before=JSON.stringify(w),openRule=LEGACY_IMPORT_OPEN_RULES[w.id];
+    w.needsReview=false;
+    if(monthSet.has(w.id))w.datePrecision='month';
+    if(openRule){
+      w.status='intake';
+      w.title=openRule.title;
+      w.importReviewResolution=openRule.resolution;
+      if(!String(w.issue||'').includes(openRule.resolution))w.issue=[w.issue,openRule.resolution].filter(Boolean).join('\n');
+    }else{
+      w.status='closed';
+      w.importReviewResolution='已自動處理：日期保留到年月，不補造確切日。';
+    }
+    if(w.id==='wo_legacy_0096'){
+      w.requestDate='2026-01-01';
+      w.title='餐廳餐墊紙－2026/01';
+    }
+    if(JSON.stringify(w)!==before){w.importReviewResolvedAt=w.importReviewResolvedAt||stamp;changed++}
+  });
+  if(!x.settings.legacyImportReviewAutoResolvedAt){x.settings.legacyImportReviewAutoResolvedAt=stamp;changed++}
+  return changed;
+}
+function correctLegacyQuantities(touchTime){
+  var changed=0,stamp=now();
+  (d().printWorkOrders||[]).forEach(function(w){
+    var rule=LEGACY_QUANTITY_CORRECTIONS[w.id];
+    if(!rule||String(w.quantity||'')!==rule.from)return;
+    w.quantity=rule.to;
+    w.quantityCorrection='已修正舊檔數量：'+rule.reason;
+    if(touchTime)w.updatedAt=stamp;
+    changed++;
+  });
+  return changed;
+}
 function migrateLegacyImages(){var x=d(),added=0;(x.printItems||[]).forEach(it=>{var has=(x.printAssetVersions||[]).some(v=>v.itemId===it.id);if(!has&&Array.isArray(it.imageLinks)&&it.imageLinks.length){x.printAssetVersions.push({id:'pv_legacy_'+it.id,itemId:it.id,workOrderId:'',name:'舊檔匯入版本',versionDate:(it.updatedAt||it.createdAt||now()).slice(0,10),status:'legacy',note:'由舊 Excel 圖片轉入，可繼續新增新版並比較。',imageLinks:it.imageLinks.slice(),isCurrent:true,createdAt:it.createdAt||now(),updatedAt:it.updatedAt||now()});added++}});return added}
 var FILE_STATUS_MAP={'草稿':'working','校稿':'working','已確認':'final','完稿':'final','已發布':'archived'};
 function migrateFileFields(){var changed=0;(d().files||[]).forEach(function(file){if(file.type&&!file.kind){file.kind=file.type;delete file.type;changed++}if(FILE_STATUS_MAP[file.status]){file.status=FILE_STATUS_MAP[file.status];changed++}});return changed}
@@ -44,6 +96,8 @@ function migrate(autoSave=true){
   x.settings=x.settings||{};
   var seed=window.CREATIVE_OPS_PRINT_SEED||{};
   var seedAdded=mergeSeedCollection(x.vendors,seed.vendors)+mergeSeedCollection(x.printItems,seed.printItems)+mergeSeedCollection(x.printWorkOrders,seed.printWorkOrders)+mergeSeedCollection(x.printInspections,seed.printInspections);if(seedAdded)changed=true;
+  if(resolveLegacyImportReviews())changed=true;
+  if(correctLegacyQuantities(false))changed=true;
   if(!x.workflowTemplates.length){x.workflowTemplates=defaultTemplates.map(t=>Object.assign({},t,{tasks:t.tasks.slice()}));changed=true}
   (x.confirmations||[]).forEach(c=>{if(!c.askedAt&&c.status==='asked'){c.askedAt=c.updatedAt||c.createdAt||now();changed=true}if(!Array.isArray(c.evidenceLinks)){c.evidenceLinks=[];changed=true}if(c.changeCount==null){c.changeCount=0;changed=true}});
   (x.projects||[]).forEach(p=>{if(p.nextAction==null){p.nextAction='';changed=true}if(p.taskType==null){p.taskType='general';changed=true}});
@@ -85,7 +139,7 @@ function runMobileAction(name){
 function addChrome(){
   if(!document.querySelector('link[href="creative-ops-v6.css"]')){}
   var actions=document.querySelector('.top-actions');
-  if(actions&&!document.getElementById('v6IntakeTop'))actions.insertAdjacentHTML('afterbegin','<button class="btn primary" id="v6IntakeTop" onclick="v6App.openIntake()">＋ 收到新任務</button><button class="btn" id="v6SearchTop" onclick="v6App.openSearch()">⌕ 全部搜尋</button>');
+  if(actions&&!document.getElementById('v6IntakeTop'))actions.insertAdjacentHTML('afterbegin','<button class="btn primary" id="v6IntakeTop" onclick="v6App.openAssistantIntake()">＋ 收到新任務</button><button class="btn" id="v6SearchTop" onclick="v6App.openSearch()">⌕ 全部搜尋</button>');
   if(actions&&!document.getElementById('v6KnowledgeTop'))actions.insertAdjacentHTML('beforeend','<button class="btn" id="v6KnowledgeTop" onclick="v6App.openKnowledgeReview()">整理經驗</button><button class="btn" id="v6FileTop" onclick="v6App.openFileHelper()">檔名助手</button><button class="btn" id="v6HubTop" onclick="v6App.openHub()">全部工具</button>');
   if(actions&&!document.getElementById('v6MobileMore'))actions.insertAdjacentHTML('beforeend','<button class="btn v6-mobile-more" id="v6MobileMore" onclick="v6App.toggleMobileActions()" aria-expanded="false" aria-controls="v6MobileActions">☰ 更多</button><div class="v6-mobile-actions-panel" id="v6MobileActions"><button class="btn" onclick="v6App.runMobileAction(\'search\')">⌕ 全部搜尋</button><button class="btn" onclick="v6App.runMobileAction(\'capture\')">＋ 隨手記錄</button><button class="btn" onclick="v6App.runMobileAction(\'knowledge\')">整理經驗</button><button class="btn" onclick="v6App.runMobileAction(\'file\')">檔名助手</button><button class="btn" onclick="v6App.runMobileAction(\'hub\')">全部工具</button></div>');
   var aside=document.querySelector('aside');
@@ -117,8 +171,10 @@ function enhanceDashboard(){
 var obs=new MutationObserver(function(){setTimeout(enhanceDashboard,0)});
 
 function openHub(){modal('V6 營運工具箱','日常工作、版本、提醒與知識整理都從這裡進入。','<div class="v6-tool-grid">'+[
- ['收到新任務','先判斷緊急度、影響與工作類型，自動建立下一步。','openIntake'],['全部搜尋','跨專案、印刷、官網、SOP、廠商與經驗一起找。','openSearch'],['印製版本圖庫','每版圖片、確認狀態、放大預覽與左右比較。','openVersions'],['庫存與成本','估算可用天數、補印日、歷史單價與廠商報價。','openInventory'],['年度／節慶模板','擺攤、節慶 Banner、雙官網與補印快速建案。','openTemplates'],['確認中心加強','看等待天數、追問日、證據和變更次數。','showTodayConfirm'],['結案檢查','強制檢查檔案、驗收、留樣與經驗回收。','openCloseouts'],['整理經驗','把收集箱補進 SOP、廠商，或兩邊連結。','openKnowledgeReview'],['檔名與路徑助手','產生統一資料夾及版本檔名，避免檔案亂丟。','openFileHelper'],['備份與修改紀錄','自動快照、JSON 備份、還原與操作紀錄。','openBackups']
+ ['AI 收到新任務','先訪談與整理任務表，最後由你確認寫入。','openAssistantIntake'],['手動快速建案','不用 AI，直接分級並建立固定範本工作。','openIntake'],['全部搜尋','跨專案、印刷、官網、SOP、廠商與經驗一起找。','openSearch'],['印製版本圖庫','每版圖片、確認狀態、放大預覽與左右比較。','openVersions'],['庫存與成本','估算可用天數、補印日、歷史單價與廠商報價。','openInventory'],['年度／節慶模板','擺攤、節慶 Banner、雙官網與補印快速建案。','openTemplates'],['確認中心加強','看等待天數、追問日、證據和變更次數。','showTodayConfirm'],['結案檢查','強制檢查檔案、驗收、留樣與經驗回收。','openCloseouts'],['整理經驗','把收集箱補進 SOP、廠商，或兩邊連結。','openKnowledgeReview'],['檔名與路徑助手','產生統一資料夾及版本檔名，避免檔案亂丟。','openFileHelper'],['備份與修改紀錄','自動快照、JSON 備份、還原與操作紀錄。','openBackups']
  ].map(t=>'<button class="v6-tool" onclick="v6App.'+t[2]+'()"><b>'+t[0]+'</b><small>'+t[1]+'</small></button>').join('')+'</div>',true)}
+
+function openAssistantIntake(){if(window.assistantApp&&assistantApp.openNew)return assistantApp.openNew();openIntake()}
 
 function recommend(){
   var urgent=val('v6Urgency'),impact=val('v6Impact'),due=val('v6Due');
@@ -167,9 +223,9 @@ function imgSrc(url){var s=String(url||''),m=s.match(/[-\w]{25,}/);return s.incl
 function openVersions(itemId){var its=d().printItems||[],selected=itemId||its[0]&&its[0].id||'';modal('印製版本圖片庫','每個版本都保留圖片、日期、狀態與變更內容；點圖片可放大。','<div class="row between"><div class="field" style="margin:0;min-width:260px"><select id="v6VersionItem" onchange="v6App.renderVersions(this.value)">'+option(its,selected)+'</select></div><div class="row"><button class="btn" onclick="v6App.compareVersions()">左右比較</button><button class="btn primary" onclick="v6App.addVersion()">＋ 新版本</button></div></div><div id="v6VersionBody" style="margin-top:14px"></div>',true);renderVersions(selected)}
 function renderVersions(itemId){var body=document.getElementById('v6VersionBody');if(!body)return;var versions=(d().printAssetVersions||[]).filter(v=>v.itemId===itemId).sort((a,b)=>String(b.versionDate||b.updatedAt).localeCompare(String(a.versionDate||a.updatedAt)));body.innerHTML=versions.length?'<div class="v6-version-grid">'+versions.map(v=>'<article class="v6-version-card '+(v.isCurrent?'v6-current':'')+'"><div class="v6-version-images '+((v.imageLinks||[]).length===1?'one':'')+'">'+((v.imageLinks||[]).map((url,i)=>'<img class="v6-thumb" src="'+esc(imgSrc(url))+'" loading="lazy" onclick="v6App.lightbox(\''+esc(v.id)+'\','+i+')" onerror="this.alt=\'圖片需登入 Drive 或檢查分享權限\'">').join('')||'<div class="empty">尚無圖片</div>')+'</div><div class="v6-version-info"><div class="row between"><strong>'+esc(v.name||'未命名版本')+'</strong>'+(v.isCurrent?'<span class="tag teal">目前版本</span>':'')+'</div><div class="tags"><span class="tag gray">'+esc(v.versionDate||'未填日期')+'</span><span class="tag brand">'+esc(v.status||'draft')+'</span></div><div class="meta">'+esc(v.note||'未記錄變更')+'</div><div class="row" style="margin-top:8px"><button class="btn small" onclick="v6App.addVersion(\''+esc(v.id)+'\')">編輯</button><button class="btn small danger" onclick="v6App.removeVersion(\''+esc(v.id)+'\')">刪除</button></div></div></article>').join('')+'</div>':'<div class="empty">這個印製品尚無版本；可建立第一版並上傳多張圖片。</div>'}
 function addVersion(id){var v=id?(d().printAssetVersions||[]).find(x=>x.id===id):{},itemId=v&&v.itemId||val('v6VersionItem')||(d().printItems[0]&&d().printItems[0].id)||'';v=v||{};modal(id?'編輯印製版本':'新增印製版本','同一版本可放正面、背面、刀模、到貨照等多張圖片。','<input id="v6VersionId" type="hidden" value="'+esc(v.id||'')+'"><div class="form-grid"><div class="field"><label>印製品 *</label><select id="v6VersionItemEdit">'+option(d().printItems||[],itemId)+'</select></div><div class="field"><label>關聯工單</label><select id="v6VersionOrder"><option value="">未連結</option>'+option(d().printWorkOrders||[],v.workOrderId,x=>x.title||x.id)+'</select></div><div class="field"><label>版本名稱 *</label><input id="v6VersionName" value="'+esc(v.name||'')+'" placeholder="例：V3 文字修正版"></div><div class="field"><label>版本日期</label><input id="v6VersionDate" type="date" value="'+esc(v.versionDate||today())+'"></div><div class="field"><label>狀態</label><select id="v6VersionStatus"><option value="draft">草稿</option><option value="proof">校稿版</option><option value="approved">已確認</option><option value="printed">已印製</option><option value="legacy">舊檔匯入</option></select></div><div class="field"><label class="check"><input id="v6VersionCurrent" type="checkbox" '+(v.isCurrent?'checked':'')+'> 設為目前版本</label></div><div class="field full"><label>變更內容／確認資訊</label><textarea id="v6VersionNote">'+esc(v.note||'')+'</textarea></div><div class="field full"><label>圖片連結（一行一筆）</label><textarea id="v6VersionLinks">'+esc((v.imageLinks||[]).join('\n'))+'</textarea></div><div class="field full"><label>從電腦上傳圖片</label><input id="v6VersionUpload" type="file" accept="image/*" multiple><div class="meta">需先在印製中心設定 Apps Script API；圖片會進同一個 Google Drive 圖片資料夾。</div></div></div><div class="modal-foot"><button class="btn" onclick="v6App.openVersions(\''+esc(itemId)+'\')">返回</button><button class="btn primary" onclick="v6App.saveVersion()">儲存版本</button></div>');document.getElementById('v6VersionStatus').value=v.status||'draft'}
-function apiPost(action,body){var url=String(localStorage.getItem(API_KEY)||window.PRINT_API_URL||'').trim(),token=String(localStorage.getItem('creative_ops_print_api_token')||'').trim();if(!url)return Promise.resolve({ok:false,skipped:true});return fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(Object.assign({action:action,token:token},body||{}))}).then(r=>r.json()).catch(err=>({ok:false,error:err.message}))}
+function apiPost(action,body){var url=String(localStorage.getItem(API_KEY)||window.PRINT_API_URL||'').trim(),token=String(localStorage.getItem('creative_ops_print_api_token')||'').trim();if(app.lastSaveFailed&&app.lastSaveFailed())return Promise.resolve({ok:false,localSaveFailed:true,error:'本機資料未儲存，已停止雲端寫入'});if(!url)return Promise.resolve({ok:false,skipped:true});return fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(Object.assign({action:action,token:token},body||{}))}).then(r=>r.json()).catch(err=>({ok:false,error:err.message}))}
 function fileData(file){return new Promise((res,rej)=>{var r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)})}
-async function saveVersion(){var name=val('v6VersionName'),itemId=val('v6VersionItemEdit');if(!name||!itemId)return alert('請選印製品並填寫版本名稱。');var id=val('v6VersionId')||uid('pv'),links=val('v6VersionLinks').split(/\r?\n/).map(s=>s.trim()).filter(Boolean),files=Array.from((document.getElementById('v6VersionUpload')||{}).files||[]);if(files.length&&!String(localStorage.getItem(API_KEY)||window.PRINT_API_URL||'').trim())return alert('請先到印製中心設定 Apps Script API 網址，再上傳圖片。');for(var f of files){toast('正在上傳 '+f.name);var result=await apiPost('uploadImage',{payload:{dataUrl:await fileData(f),fileName:f.name,recordId:id}});if(!result.ok)return alert(result.error||'圖片上傳失敗');links.push(result.viewUrl)}var list=d().printAssetVersions||[],v=list.find(x=>x.id===id),changed=[],obj={id:id,itemId:itemId,workOrderId:val('v6VersionOrder'),name:name,versionDate:val('v6VersionDate'),status:val('v6VersionStatus'),note:val('v6VersionNote'),imageLinks:Array.from(new Set(links)),isCurrent:checked('v6VersionCurrent'),updatedAt:now()};if(obj.isCurrent)list.forEach(x=>{if(x.itemId===itemId&&x.id!==id&&x.isCurrent){x.isCurrent=false;x.updatedAt=now();changed.push(x)}});if(v)Object.assign(v,obj);else{obj.createdAt=now();list.unshift(obj)}save('儲存印製版本與圖片');apiPost('syncAll',{versions:[obj].concat(changed)});openVersions(itemId);toast('版本已儲存')}
+async function saveVersion(){var name=val('v6VersionName'),itemId=val('v6VersionItemEdit');if(!name||!itemId)return alert('請選印製品並填寫版本名稱。');var id=val('v6VersionId')||uid('pv'),files=Array.from((document.getElementById('v6VersionUpload')||{}).files||[]),draft={id:id,itemId:itemId,workOrderId:val('v6VersionOrder'),name:name,versionDate:val('v6VersionDate'),status:val('v6VersionStatus'),note:val('v6VersionNote'),imageLinks:val('v6VersionLinks').split(/\r?\n/).map(s=>s.trim()).filter(Boolean),isCurrent:checked('v6VersionCurrent')},operationId=0;if(files.length&&!String(localStorage.getItem(API_KEY)||window.PRINT_API_URL||'').trim())return alert('請先到印製中心設定 Apps Script API 網址，再上傳圖片。');try{if(files.length)operationId=app.setModalBusy('圖片上傳中，請勿關閉或切換表單。');for(var f of files){toast('正在上傳 '+f.name);var result=await apiPost('uploadImage',{payload:{dataUrl:await fileData(f),fileName:f.name,recordId:id}});if(!result.ok)throw new Error(result.error||'圖片上傳失敗');draft.imageLinks.push(result.viewUrl)}if(files.length&&!app.isModalInstance(operationId))throw new Error('上傳期間表單已變更，已停止儲存。')}catch(err){alert(err.message);return}finally{if(files.length)app.setModalBusy('')}var list=d().printAssetVersions||[],v=list.find(x=>x.id===id),changed=[],obj=Object.assign({},draft,{imageLinks:Array.from(new Set(draft.imageLinks)),updatedAt:now()});if(obj.isCurrent)list.forEach(x=>{if(x.itemId===itemId&&x.id!==id&&x.isCurrent){x.isCurrent=false;x.updatedAt=now();changed.push(x)}});if(v)Object.assign(v,obj);else{obj.createdAt=now();list.unshift(obj)}if(save('儲存印製版本與圖片')===false)return;apiPost('syncAll',{versions:[obj].concat(changed)});openVersions(itemId);toast('版本已儲存')}
 function removeVersion(id){var v=(d().printAssetVersions||[]).find(x=>x.id===id);if(!v||!confirm('確定刪除這個版本紀錄？Drive 原始圖片不會被刪除。'))return;d().printAssetVersions=d().printAssetVersions.filter(x=>x.id!==id);save('刪除印製版本紀錄');apiPost('deleteVersion',{id:id});renderVersions(v.itemId)}
 var light={zoom:1,index:0,version:null};
 function ensureLightbox(){if(document.getElementById('v6Lightbox'))return;document.body.insertAdjacentHTML('beforeend','<div class="v6-lightbox" id="v6Lightbox"><div class="v6-lightbox-tools"><span class="v6-lightbox-title" id="v6LightTitle"></span><button class="btn small" onclick="v6App.lightStep(-1)">‹ 前一張</button><button class="btn small" onclick="v6App.zoom(-.25)">－</button><span id="v6Zoom">100%</span><button class="btn small" onclick="v6App.zoom(.25)">＋</button><button class="btn small" onclick="v6App.zoom(0,true)">符合畫面</button><a class="btn small" id="v6Original" target="_blank" rel="noopener">開原圖</a><button class="btn small" onclick="v6App.closeLightbox()">×</button></div><div class="v6-lightbox-stage" id="v6LightStage"><img id="v6LightImage"></div></div>')}
@@ -209,7 +265,7 @@ function restoreSnapshot(index){var s=snapshots()[index];if(!s||!confirm('確定
 function showToday(type){var x=d(),list=[],title='';if(type==='tasks'){title='今天到期工作';list=(x.tasks||[]).filter(t=>t.status!=='done'&&t.dueDate&&dayDiff(t.dueDate)<=0).map(t=>({name:t.name,meta:(project(t.projectId)||{}).name||'未連結專案',action:'app.openTask(\'\',\''+esc(t.id)+'\')'}))}if(type==='confirmations'){return showTodayConfirm()}if(type==='prints'){title='需要盯的印製工單';list=(x.printWorkOrders||[]).filter(w=>w.status!=='closed'&&(w.kind==='urgent'||(w.dueDate&&dayDiff(w.dueDate)<=3))).map(w=>({name:w.title,meta:w.dueDate||'',action:'printApp.openOrder(\''+esc(w.id)+'\')'}))}if(type==='closeouts')return openCloseouts();modal(title,'從首頁直接處理，不用再逐頁尋找。','<div class="list">'+(list.map(i=>'<div class="item"><div class="row between"><div><strong>'+esc(i.name)+'</strong><div class="meta">'+esc(i.meta)+'</div></div><button class="btn" onclick="'+i.action+'">處理</button></div></div>').join('')||'<div class="empty">目前沒有項目。</div>')+'</div>',true)}
 function showTodayConfirm(){var list=(d().confirmations||[]).filter(c=>!['confirmed','cancelled'].includes(c.status)).sort((a,b)=>age(b.askedAt||b.createdAt)-age(a.askedAt||a.createdAt));modal('加強版確認中心','依等待時間排序；不要讓很多「待確認」混成一團。','<div class="list">'+(list.map(c=>'<div class="item attention '+(age(c.askedAt||c.createdAt)>=7?'critical':'')+'"><div class="row between"><div><strong>'+esc(c.question)+'</strong><div class="meta">'+esc(c.person||'未指定')+' · 已等待 '+age(c.askedAt||c.createdAt)+' 天 · '+(c.nextFollowup?'下次追問 '+c.nextFollowup:'未設追問日')+'</div><div class="tags"><span class="tag gray">變更 '+Number(c.changeCount||0)+' 次</span><span class="tag blue">證據 '+(c.evidenceLinks||[]).length+' 筆</span></div></div><button class="btn" onclick="v6App.openConfirmation(\''+esc(c.id)+'\')">處理</button></div></div>').join('')||'<div class="empty">目前沒有待確認事項。</div>')+'</div>',true)}
 
-window.v6App={migrateData:migrate,migrateLegacyImages:migrateLegacyImages,toggleMobileActions:toggleMobileActions,runMobileAction:runMobileAction,openHub:openHub,openIntake:openIntake,recommend:recommend,saveIntake:saveIntake,openConfirmation:openConfirmation,saveConfirmation:saveConfirmation,snoozeConfirm:snoozeConfirm,openCloseout:openCloseout,completeCloseout:completeCloseout,openCloseouts:openCloseouts,openSearch:openSearch,runSearch:runSearch,openResult:openResult,openVersions:openVersions,renderVersions:renderVersions,addVersion:addVersion,saveVersion:saveVersion,removeVersion:removeVersion,lightbox:lightbox,zoom:zoom,lightStep:lightStep,closeLightbox:closeLightbox,compareVersions:compareVersions,drawCompare:drawCompare,openInventory:openInventory,saveInventory:saveInventory,openQuotes:openQuotes,saveQuote:saveQuote,openTemplates:openTemplates,saveTemplateSettings:saveTemplateSettings,applyTemplate:applyTemplate,createFromTemplate:createFromTemplate,openKnowledgeReview:openKnowledgeReview,markKnowledgeSorted:markKnowledgeSorted,openFileHelper:openFileHelper,makeFileName:makeFileName,copyFileResult:copyFileResult,registerFile:registerFile,openBackups:openBackups,makeSnapshot:makeSnapshot,restoreSnapshot:restoreSnapshot,showToday:showToday,showTodayConfirm:showTodayConfirm};
+window.v6App={migrateData:migrate,migrateLegacyImages:migrateLegacyImages,resolveLegacyImportReviews:resolveLegacyImportReviews,correctLegacyQuantities:correctLegacyQuantities,toggleMobileActions:toggleMobileActions,runMobileAction:runMobileAction,openHub:openHub,openAssistantIntake:openAssistantIntake,openIntake:openIntake,recommend:recommend,saveIntake:saveIntake,openConfirmation:openConfirmation,saveConfirmation:saveConfirmation,snoozeConfirm:snoozeConfirm,openCloseout:openCloseout,completeCloseout:completeCloseout,openCloseouts:openCloseouts,openSearch:openSearch,runSearch:runSearch,openResult:openResult,openVersions:openVersions,renderVersions:renderVersions,addVersion:addVersion,saveVersion:saveVersion,removeVersion:removeVersion,lightbox:lightbox,zoom:zoom,lightStep:lightStep,closeLightbox:closeLightbox,compareVersions:compareVersions,drawCompare:drawCompare,openInventory:openInventory,saveInventory:saveInventory,openQuotes:openQuotes,saveQuote:saveQuote,openTemplates:openTemplates,saveTemplateSettings:saveTemplateSettings,applyTemplate:applyTemplate,createFromTemplate:createFromTemplate,openKnowledgeReview:openKnowledgeReview,markKnowledgeSorted:markKnowledgeSorted,openFileHelper:openFileHelper,makeFileName:makeFileName,copyFileResult:copyFileResult,registerFile:registerFile,openBackups:openBackups,makeSnapshot:makeSnapshot,restoreSnapshot:restoreSnapshot,showToday:showToday,showTodayConfirm:showTodayConfirm};
 app.openConfirmation=openConfirmation;app.saveConfirmation=saveConfirmation;
 document.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&String(e.key).toLowerCase()==='k'){e.preventDefault();app.openCapture()}});
 addChrome();migrate();obs.observe(document.getElementById('content'),{childList:true,subtree:true});enhanceDashboard();ensureLightbox();
