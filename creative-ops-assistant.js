@@ -4,6 +4,7 @@
 var API_URL_KEY='creative_ops_print_api_url';
 var API_TOKEN_KEY='creative_ops_print_api_token';
 var PENDING_KEY='creative_ops_assistant_pending_request';
+var SYNC_TIMEOUT_MS=45000;
 var state={busy:false,status:null,lastProposalId:'',lastPlan:null};
 var d=function(){return app.getData()};
 var now=function(){return new Date().toISOString()};
@@ -50,19 +51,25 @@ function post(action,body,timeoutMs){
   var controller=typeof AbortController!=='undefined'?new AbortController():null;
   var timer=controller?setTimeout(function(){controller.abort()},timeoutMs||90000):null;
   return fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(Object.assign({action:action,token:token},body||{})),signal:controller&&controller.signal})
-    .then(function(response){return response.json()})
-    .then(function(result){if(!result||result.ok!==true)throw new Error(result&&result.error||'後端沒有回傳成功');return result})
-    .catch(function(error){if(error&&error.name==='AbortError')throw new Error('AI 連線逾時；用相同內容重試會沿用同一請求，不會重複建立。');throw error})
+    .then(function(response){return response.json().catch(function(){throw new Error('後端回應格式無效（HTTP '+response.status+'）')})})
+    .then(function(result){if(!result||result.ok!==true){var responseError=new Error(result&&result.error||'後端沒有回傳成功');responseError.assistantResponse=true;throw responseError}return result})
+    .catch(function(error){if(error&&error.name==='AbortError')throw new Error('AI 連線逾時；用相同內容重試會沿用同一請求，不會重複建立。');if(error&&(error.assistantResponse||/^(?:AI |後端|OpenAI|Google |全平台)/.test(String(error.message||''))))throw error;throw new Error('AI 連線失敗：'+String(error&&error.message||error||'未知錯誤'))})
+    .finally(function(){if(timer)clearTimeout(timer)});
+}
+
+function settleWithin(promise,timeoutMs,message){
+  var timer;
+  return Promise.race([promise,new Promise(function(resolve,reject){timer=setTimeout(function(){reject(new Error(message))},timeoutMs)})])
     .finally(function(){if(timer)clearTimeout(timer)});
 }
 
 function syncFirst(){
   if(!window.v6Cloud)return Promise.reject(new Error('全平台同步尚未載入'));
-  return v6Cloud.syncNow().then(function(result){if(!result||result.ok!==true)throw new Error(result&&result.error||'全平台資料尚未同步，已停止 AI 規劃');return result});
+  return settleWithin(v6Cloud.syncNow(),SYNC_TIMEOUT_MS,'全平台同步逾時，已停止 AI 規劃；請確認連線後重試。').then(function(result){if(!result||result.ok!==true)throw new Error(result&&result.error||'全平台資料尚未同步，已停止 AI 規劃');return result});
 }
 
 function syncAfter(){
-  return window.v6Cloud?v6Cloud.syncNow().then(function(result){if(!result||result.ok!==true)throw new Error(result&&result.error||'Google 後台已處理，但前端同步失敗，請按全平台同步重試');return result}):Promise.resolve();
+  return window.v6Cloud?settleWithin(v6Cloud.syncNow(),SYNC_TIMEOUT_MS,'Google 後台已處理，但前端同步逾時；請按全平台同步重試。').then(function(result){if(!result||result.ok!==true)throw new Error(result&&result.error||'Google 後台已處理，但前端同步失敗，請按全平台同步重試');return result}):Promise.resolve();
 }
 
 function pendingRequest(text,mode,minutes){
