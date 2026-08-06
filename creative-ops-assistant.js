@@ -30,10 +30,7 @@ function toast(message,duration){
 }
 
 function modal(title,sub,body,wide){
-  var box=document.getElementById('modal');
-  box.className='modal'+(wide?' wide':'');
-  box.innerHTML='<div class="modal-head"><div><h2>'+esc(title)+'</h2><p>'+esc(sub||'')+'</p></div><button class="btn icon" onclick="app.requestCloseModal()">×</button></div>'+body;
-  document.getElementById('modalBackdrop').classList.add('open');
+  return app.openModal(title,sub,body,wide);
 }
 
 function value(id){var el=document.getElementById(id);return el?String(el.value||'').trim():''}
@@ -314,11 +311,12 @@ function renderProjectChoices(query){
 function selectProject(id){state.selectedProjectId=id;renderProjectChoices()}
 function openExisting(projectId){
   ensure();state.selectedProjectId=projectId&&project(projectId)?projectId:'';
-  modal('更新既有專案','先精確選定專案，再說這次需求改了什麼；助理會顯示新增、更新與保持不變。','<div class="assistant-project-picker"><label>搜尋進行中的專案</label><input id="assistantProjectSearch" placeholder="輸入專案名稱" oninput="assistantApp.renderProjectChoices(this.value)"><div id="assistantSelectedProject" class="assistant-selected-project"></div><div id="assistantProjectChoices" class="assistant-project-choices"></div><label>這次有哪些新增或變更？</label><textarea id="assistantExistingInput" placeholder="例：追加 DM；兩站上線日期改到 8/20，其他工作保持不變。"></textarea><div class="modal-foot assistant-modal-foot"><button class="btn" onclick="app.closeModal()">取消</button><button class="btn primary" data-assistant-submit data-idle-label="開始整理變更" onclick="assistantApp.startExisting()">開始整理變更</button></div></div>',true);
-  setTimeout(function(){renderProjectChoices('')},0);
+  if(modal('更新既有專案','先精確選定專案，再說這次需求改了什麼；助理會顯示新增、更新與保持不變。','<div class="assistant-project-picker"><label>搜尋進行中的專案</label><input id="assistantProjectSearch" placeholder="輸入專案名稱" oninput="assistantApp.renderProjectChoices(this.value)"><div id="assistantSelectedProject" class="assistant-selected-project"></div><div id="assistantProjectChoices" class="assistant-project-choices"></div><label>這次有哪些新增或變更？</label><textarea id="assistantExistingInput" placeholder="例：追加 DM；兩站上線日期改到 8/20，其他工作保持不變。"></textarea><div class="modal-foot assistant-modal-foot"><button class="btn" onclick="app.closeModal()">取消</button><button class="btn primary" data-assistant-submit data-idle-label="開始整理變更" onclick="assistantApp.startExisting()">開始整理變更</button></div></div>',true)===false)return false;
+  app.scheduleModalCallback(function(){renderProjectChoices('')},0);
+  return true;
 }
 function startExisting(){var target=project(state.selectedProjectId),text=value('assistantExistingInput');if(!target)return toast('請先精確選定一個專案');if(!text)return toast('請描述這次新增或變更的需求');interview(text,'existing_project',target.id)}
-function openExistingFromProject(id){if(app.requestCloseModal&&app.requestCloseModal()===false)return;openExisting(id)}
+function openExistingFromProject(id){return app.requestModalTransition(function(){return openExisting(id)})}
 function openFreeTime(){modal('我有空檔','只推薦現有、未完成且現在能開始的工作；不修改任何專案資料。','<div class="assistant-free-time-grid"><button class="btn" onclick="assistantApp.freeTime(15)">15 分鐘</button><button class="btn" onclick="assistantApp.freeTime(30)">30 分鐘</button><button class="btn" onclick="assistantApp.freeTime(60)">60 分鐘</button><button class="btn" onclick="assistantApp.freeTime(90)">90 分鐘</button></div><div class="modal-foot"><button class="btn" onclick="assistantApp.dailyReview()">整理今天三件事</button><button class="btn" onclick="app.closeModal()">關閉</button></div>',true)}
 function open(){
   ensure();
@@ -398,12 +396,12 @@ function addChrome(){
 
 var priorOpenProject=app.openProject;
 app.openProject=function(id){
-  priorOpenProject(id);
-  setTimeout(function(){
-    if(!id||document.getElementById('assistantProjectEntry'))return;
-    var form=document.querySelector('#modal > .form-grid');if(!form)return;
-    form.insertAdjacentHTML('afterend','<div class="assistant-project-entry" id="assistantProjectEntry"><div><b>需求有變？讓 AI 重新整理這個專案的任務表</b><span>會先顯示新增／更新差異，不會直接改資料。</span></div><button type="button" class="btn" onclick="assistantApp.openExistingFromProject(\''+safeId(id)+'\')">✦ 更新任務表</button></div>');
-  },0);
+  var opened=priorOpenProject(id),marker=document.getElementById('projectId');
+  if(opened===false||!marker||marker.value!==String(id||''))return false;
+  if(!id||document.getElementById('assistantProjectEntry'))return true;
+  var form=document.querySelector('#modal > .form-grid');if(!form)return true;
+  form.insertAdjacentHTML('afterend','<div class="assistant-project-entry" id="assistantProjectEntry"><div><b>需求有變？讓 AI 重新整理這個專案的任務表</b><span>會先顯示新增／更新差異，不會直接改資料。</span></div><button type="button" class="btn" onclick="assistantApp.openExistingFromProject(\''+safeId(id)+'\')">✦ 更新任務表</button></div>');
+  return true;
 };
 
 window.assistantApp={open:open,openNew:openNew,startNew:startNew,openExisting:openExisting,startExisting:startExisting,openExistingFromProject:openExistingFromProject,renderProjectChoices:renderProjectChoices,selectProject:selectProject,openFreeTime:openFreeTime,submit:submit,ask:ask,interview:interview,freeTime:freeTime,dailyReview:dailyReview,openProposal:openProposal,applyOne:applyOne,applyAllPending:applyAllPending,startFocus:startFocus,focusFollowup:focusFollowup,followUp:followUp,pickAnswer:pickAnswer,continueInterview:continueInterview,pauseInterview:pauseInterview,closeInterview:closeInterview,discardInterview:discardInterview,removeDraftRow:removeDraftRow,addDraftRow:addDraftRow,saveDraft:saveDraft,confirmInterview:confirmInterview,openSetup:openSetup,saveConfig:saveConfig,toggleDaily:toggleDaily,loadStatus:loadStatus,openHistory:openHistory,openRun:openRun,feedback:feedback,undo:undo,openMemory:openMemory,toggleMemory:toggleMemory};

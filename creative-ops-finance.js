@@ -38,10 +38,7 @@ function toast(message){
 }
 
 function modal(title,sub,body,wide){
-  var box=document.getElementById('modal');
-  box.className='modal'+(wide?' wide':'');
-  box.innerHTML='<div class="modal-head"><div><h2>'+esc(title)+'</h2><p>'+esc(sub||'')+'</p></div><button class="btn icon" onclick="app.requestCloseModal()">×</button></div>'+body;
-  document.getElementById('modalBackdrop').classList.add('open');
+  return app.openModal(title,sub,body,wide);
 }
 
 function projectOptions(selected){
@@ -244,14 +241,15 @@ function renderQuickTaskResults(){
 
 function openQuickTaskPicker(){
   var timer=loadTimer(),linked=task(timer.taskId);
-  modal('搜尋要專注的工作','可輸入工作名稱或專案名稱；一開始只列出最急的 12 筆。','<div class="field"><label>搜尋工作／專案</label><input id="quickTaskSearch" data-modal-ephemeral autocomplete="off" placeholder="例：檸檬、Banner、官網" oninput="financeApp.searchQuickTasks()" onkeydown="financeApp.quickTaskSearchKey(event)"></div><div id="quickTaskResults"></div><div class="modal-foot"><button class="btn" onclick="financeApp.clearQuickTask()" '+(linked?'':'disabled')+'>清除選擇</button><button class="btn" onclick="financeApp.closeQuickTaskPicker()">取消</button></div>',true);
+  if(modal('搜尋要專注的工作','可輸入工作名稱或專案名稱；一開始只列出最急的 12 筆。','<div class="field"><label>搜尋工作／專案</label><input id="quickTaskSearch" data-modal-ephemeral autocomplete="off" placeholder="例：檸檬、Banner、官網" oninput="financeApp.searchQuickTasks()" onkeydown="financeApp.quickTaskSearchKey(event)"></div><div id="quickTaskResults"></div><div class="modal-foot"><button class="btn" onclick="financeApp.clearQuickTask()" '+(linked?'':'disabled')+'>清除選擇</button><button class="btn" onclick="financeApp.closeQuickTaskPicker()">取消</button></div>',true)===false)return false;
   var closeButton=document.querySelector('#modal .modal-head .btn.icon');if(closeButton)closeButton.onclick=closeQuickTaskPicker;
   renderQuickTaskResults();
-  setTimeout(function(){var input=document.getElementById('quickTaskSearch');if(input)input.focus()},0);
+  app.scheduleModalCallback(function(){var input=document.getElementById('quickTaskSearch');if(input)input.focus()},0);
+  return true;
 }
 
 function searchQuickTasks(){renderQuickTaskResults()}
-function closeQuickTaskPicker(){app.closeModal();setTimeout(function(){var button=document.getElementById('homeFocusPickerButton');if(button)button.focus()},0)}
+function closeQuickTaskPicker(){if(app.requestModalTransition()===false)return false;setTimeout(function(){var button=document.getElementById('homeFocusPickerButton');if(button)button.focus()},0);return true}
 function quickTaskSearchKey(event){if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeQuickTaskPicker();return}if(event.key==='Enter'){var first=document.querySelector('#quickTaskResults [data-focus-task-id]');if(first){event.preventDefault();selectQuickTask(first.dataset.focusTaskId)}}}
 function selectQuickTask(taskId){if(quickTargetChanged(taskId)){closeQuickTaskPicker();toast('已選擇工作，可直接開始專注')}}
 function clearQuickTask(){if(quickTargetChanged('')){closeQuickTaskPicker();toast('已清除快速專注工作')}}
@@ -316,5 +314,5 @@ function setMonth(value){state.month=value;render()}function setKind(value){stat
 function addChrome(){var aside=document.querySelector('aside'),side=aside&&aside.querySelector('.side-actions');if(side&&!document.getElementById('financeNav'))side.insertAdjacentHTML('beforebegin','<div class="nav-group" id="financeSide"><div class="nav-label">財務與工時</div><button class="nav" id="financeNav" onclick="financeApp.open(\'cash\')">＄　收支／薪資</button></div>')}
 
 window.financeApp={open:open,render:render,setMonth:setMonth,setKind:setKind,setStatus:setStatus,openRecord:openRecord,openQuickRecord:openQuickRecord,saveQuickRecord:saveQuickRecord,refreshRecordStatus:refreshRecordStatus,saveRecord:saveRecord,advanceRecord:advanceRecord,removeRecord:removeRecord,setAttendanceMonth:setAttendanceMonth,saveAttendance:saveAttendance,editAttendance:editAttendance,removeAttendance:removeAttendance,openSalarySettings:openSalarySettings,saveSalarySettings:saveSalarySettings,focusTargetChanged:focusTargetChanged,focusMinutesChanged:focusMinutesChanged,focusToggle:focusToggle,focusInterrupt:focusInterrupt,focusReset:focusReset,openQuickTaskPicker:openQuickTaskPicker,searchQuickTasks:searchQuickTasks,quickTaskSearchKey:quickTaskSearchKey,closeQuickTaskPicker:closeQuickTaskPicker,selectQuickTask:selectQuickTask,clearQuickTask:clearQuickTask,quickTargetChanged:quickTargetChanged,quickToggle:quickToggle,startTask:startTask,finishFocus:finishFocus,focusComplete:focusComplete,openFocusSettings:openFocusSettings,saveFocusSettings:saveFocusSettings,openLegacyImport:openLegacyImport,importLegacy:importLegacy};
-ensure();addChrome();var baseRender=app.render,baseOpenProject=app.openProject,baseOpenTask=app.openTask;app.render=function(){if(state.active)render();else baseRender()};app.openProject=function(projectId){state.active=false;baseOpenProject(projectId);if(projectId)enhanceProjectModal(projectId)};app.openTask=function(projectId,taskId){state.active=false;baseOpenTask(projectId,taskId);if(taskId)enhanceTaskModal(taskId)};document.getElementById('mainNav').addEventListener('click',function(event){var button=event.target.closest('.nav');if(button&&button.id!=='financeNav')state.active=false});document.addEventListener('keydown',function(event){if(event.key==='Escape'&&document.getElementById('modalBackdrop').classList.contains('open')&&document.getElementById('quickTaskResults'))setTimeout(function(){var button=document.getElementById('homeFocusPickerButton');if(button)button.focus()},0)},true);var observer=new MutationObserver(function(){setTimeout(enhanceDashboard,0)});observer.observe(document.getElementById('content'),{childList:true,subtree:false});setTimeout(enhanceDashboard,100);if(loadTimer().running)startTick();
+ensure();addChrome();var baseRender=app.render,baseOpenProject=app.openProject,baseOpenTask=app.openTask;app.render=function(){if(state.active)render();else baseRender()};app.openProject=function(projectId){state.active=false;var opened=baseOpenProject(projectId),marker=document.getElementById('projectId');if(opened===false||!marker||marker.value!==String(projectId||''))return false;if(projectId)enhanceProjectModal(projectId);return true};app.openTask=function(projectId,taskId){state.active=false;var opened=baseOpenTask(projectId,taskId),marker=document.getElementById('taskId');if(opened===false||!marker||marker.value!==String(taskId||''))return false;if(taskId)enhanceTaskModal(taskId);return true};document.getElementById('mainNav').addEventListener('click',function(event){var button=event.target.closest('.nav');if(button&&button.id!=='financeNav')state.active=false});document.addEventListener('keydown',function(event){if(event.key==='Escape'&&document.getElementById('modalBackdrop').classList.contains('open')&&document.getElementById('quickTaskResults'))setTimeout(function(){var button=document.getElementById('homeFocusPickerButton');if(button)button.focus()},0)},true);var observer=new MutationObserver(function(){setTimeout(enhanceDashboard,0)});observer.observe(document.getElementById('content'),{childList:true,subtree:false});setTimeout(enhanceDashboard,100);if(loadTimer().running)startTick();
 })();
