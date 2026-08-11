@@ -25,12 +25,54 @@ function modal(title,sub,body,wide){
 function toast(text){if(app.lastSaveFailed&&app.lastSaveFailed())return;var e=document.getElementById('toast');e.textContent=text;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),2200)}
 function save(action){return app.saveData(action)}
 
+function templateStep(id,title,kind,phase,trigger,extra){return Object.assign({id:id,title:title,kind:kind||'task',phase:phase||'make',trigger:trigger||'sequence',note:''},extra||{})}
 var defaultTemplates=[
- {id:'tpl_booth',name:'擺攤／展售活動',type:'booth',reminderDays:21,tasks:['確認活動與攤位資訊','確認促銷內容與商品','製作官網 Banner 1700×730','製作手機版 Banner','製作 FB 貼文素材','官網 A 上線並確認','官網 B 上線並確認','FB 發布並確認','活動後整理圖片與注意事項']},
- {id:'tpl_festival',name:'年度節慶 Banner',type:'festival',reminderDays:30,tasks:['確認主題與優惠','確認兩站規格與差異','製作桌機 Banner','製作手機 Banner','主管校稿確認','官網 A 更新','官網 B 更新','FB 發布','留存完稿與成效']},
- {id:'tpl_web',name:'雙官網定期維護',type:'website',reminderDays:7,tasks:['盤點官網 A 待更新','盤點官網 B 待更新','編輯 HTML','分別預覽桌機與手機','確認連結與文字','發布官網 A','發布官網 B','記錄兩站版本差異']},
- {id:'tpl_print',name:'印刷品補印',type:'print',reminderDays:14,tasks:['盤點庫存與需求量','確認規格與上次注意事項','詢價與比較廠商','校稿確認','數量價格交期確認','送印','到貨驗收','成品留樣','版本圖片與問題歸檔']}
+ {id:'tpl_booth',name:'擺攤／展售活動',type:'booth',builtIn:true,schemaVersion:2,steps:[
+  templateStep('tpl_booth_s1','確認活動與攤位資訊','confirmation','review','countdown',{daysBefore:21,note:'確認日期、地點、攤位、進撤場與窗口'}),
+  templateStep('tpl_booth_s2','確認促銷內容與商品','confirmation','review','countdown',{daysBefore:18,note:'促銷門檻、主推品項、贈品與數量'}),
+  templateStep('tpl_booth_s3','製作官網 Banner 1700×730','task','make','countdown',{daysBefore:14}),
+  templateStep('tpl_booth_s4','製作手機版 Banner','task','make','countdown',{daysBefore:10}),
+  templateStep('tpl_booth_s5','製作 FB 貼文素材','task','make','countdown',{daysBefore:7}),
+  templateStep('tpl_booth_s6','官網 A 上線並確認','task','publish','countdown',{daysBefore:5}),
+  templateStep('tpl_booth_s7','官網 B 上線並確認','task','publish','countdown',{daysBefore:5}),
+  templateStep('tpl_booth_s8','FB 發布並確認','task','publish','countdown',{daysBefore:2}),
+  templateStep('tpl_booth_s9','活動後整理圖片與注意事項','task','closeout','countdown',{daysBefore:0,note:'活動結束後補促銷成效、現場問題與下次提醒'})
+ ]},
+ {id:'tpl_festival',name:'年度節慶 Banner',type:'festival',builtIn:true,schemaVersion:2,steps:[
+  templateStep('tpl_festival_s1','確認主題與優惠','confirmation','review','countdown',{daysBefore:30}),
+  templateStep('tpl_festival_s2','確認兩站規格與差異','task','review','countdown',{daysBefore:21}),
+  templateStep('tpl_festival_s3','製作桌機 Banner','task','make','countdown',{daysBefore:14}),
+  templateStep('tpl_festival_s4','製作手機 Banner','task','make','countdown',{daysBefore:10}),
+  templateStep('tpl_festival_s5','主管校稿確認','confirmation','review','countdown',{daysBefore:7}),
+  templateStep('tpl_festival_s6','官網 A 更新','task','publish','countdown',{daysBefore:5}),
+  templateStep('tpl_festival_s7','官網 B 更新','task','publish','countdown',{daysBefore:5}),
+  templateStep('tpl_festival_s8','FB 發布','task','publish','countdown',{daysBefore:2}),
+  templateStep('tpl_festival_s9','留存完稿與成效','task','closeout','countdown',{daysBefore:0})
+ ]},
+ {id:'tpl_web',name:'雙官網定期維護',type:'website',builtIn:true,schemaVersion:2,steps:[
+  templateStep('tpl_web_s1','盤點官網 A 待更新','task','review','weekly',{weekday:1,note:'每週一先盤點本週要處理的變更'}),
+  templateStep('tpl_web_s2','盤點官網 B 待更新','task','review','sequence'),
+  templateStep('tpl_web_s3','編輯 HTML','task','make','sequence'),
+  templateStep('tpl_web_s4','分別預覽桌機與手機','task','review','sequence'),
+  templateStep('tpl_web_s5','確認連結與文字','confirmation','review','sequence'),
+  templateStep('tpl_web_s6','發布官網 A','task','publish','sequence'),
+  templateStep('tpl_web_s7','發布官網 B','task','publish','sequence'),
+  templateStep('tpl_web_s8','記錄兩站版本差異','task','closeout','sequence')
+ ]},
+ {id:'tpl_print',name:'印刷品補印',type:'print',builtIn:true,schemaVersion:2,steps:[
+  templateStep('tpl_print_s1','盤點庫存與需求量','task','review','sequence'),
+  templateStep('tpl_print_s2','確認規格與上次注意事項','task','review','sequence'),
+  templateStep('tpl_print_s3','確認常用廠商、交期與現價；新品／改規格／急件再詢價','task','review','sequence',{note:'常用品沿用固定廠商；只有新品、規格變更或急件才比較報價'}),
+  templateStep('tpl_print_s4','校稿確認','confirmation','review','sequence'),
+  templateStep('tpl_print_s5','數量、價格與交期確認','confirmation','review','sequence'),
+  templateStep('tpl_print_s6','送印','task','publish','sequence'),
+  templateStep('tpl_print_s7','到貨驗收','task','review','sequence'),
+  templateStep('tpl_print_s8','成品留樣','task','closeout','sequence'),
+  templateStep('tpl_print_s9','版本圖片與問題歸檔','task','closeout','sequence')
+ ]}
 ];
+defaultTemplates.forEach(function(template){template.tasks=template.steps.map(function(step){return step.title})});
+function defaultWorkflowTemplates(){return JSON.parse(JSON.stringify(defaultTemplates))}
 
 function mergeSeedCollection(target,source){var existing=new Set(target.map(x=>x&&x.id));var added=0;(source||[]).forEach(x=>{if(x&&x.id&&!existing.has(x.id)){target.push(JSON.parse(JSON.stringify(x)));existing.add(x.id);added++}});return added}
 var LEGACY_IMPORT_MONTH_IDS=['wo_legacy_0007','wo_legacy_0008','wo_legacy_0009','wo_legacy_0017','wo_legacy_0018','wo_legacy_0025','wo_legacy_0026','wo_legacy_0027','wo_legacy_0034','wo_legacy_0035','wo_legacy_0042','wo_legacy_0047','wo_legacy_0050','wo_legacy_0051','wo_legacy_0096'];
@@ -94,7 +136,7 @@ function migrate(autoSave=true){
   var seedAdded=mergeSeedCollection(x.vendors,seed.vendors)+mergeSeedCollection(x.printItems,seed.printItems)+mergeSeedCollection(x.printWorkOrders,seed.printWorkOrders)+mergeSeedCollection(x.printInspections,seed.printInspections);if(seedAdded)changed=true;
   if(resolveLegacyImportReviews())changed=true;
   if(correctLegacyQuantities(false))changed=true;
-  if(!x.workflowTemplates.length){x.workflowTemplates=defaultTemplates.map(t=>Object.assign({},t,{tasks:t.tasks.slice()}));changed=true}
+  if(!x.workflowTemplates.length){x.workflowTemplates=defaultWorkflowTemplates();changed=true}
   (x.confirmations||[]).forEach(c=>{if(!c.askedAt&&c.status==='asked'){c.askedAt=c.updatedAt||c.createdAt||now();changed=true}if(!Array.isArray(c.evidenceLinks)){c.evidenceLinks=[];changed=true}if(c.changeCount==null){c.changeCount=0;changed=true}});
   (x.projects||[]).forEach(p=>{if(p.nextAction==null){p.nextAction='';changed=true}if(p.taskType==null){p.taskType='general';changed=true}});
   (x.printItems||[]).forEach(it=>{
@@ -143,7 +185,7 @@ function addChrome(){
 }
 
 function todayBoard(){
-  var x=d(),openTasks=(x.tasks||[]).filter(t=>t.status!=='done'),taskDue=openTasks.filter(t=>t.dueDate&&dayDiff(t.dueDate)<=0);
+  var x=d(),openTasks=(x.tasks||[]).filter(t=>t.status!=='done'),taskDue=openTasks.filter(t=>{var p=project(t.projectId),active=p&&p.workflow&&p.workflow.activeRecord;return (t.dueDate&&dayDiff(t.dueDate)<=0)||(t.workflowGenerated&&active&&active.collection==='tasks'&&active.id===t.id)});
   var conf=(x.confirmations||[]).filter(c=>!['confirmed','cancelled'].includes(c.status));
   var confDue=conf.filter(c=>(c.nextFollowup&&dayDiff(c.nextFollowup)<=0)||age(c.askedAt||c.createdAt)>=3);
   var prints=(x.printWorkOrders||[]).filter(w=>w.status!=='closed'&&((w.kind==='urgent')||(w.dueDate&&dayDiff(w.dueDate)<=3)));
@@ -258,10 +300,10 @@ function openBackups(){var ss=snapshots(),logs=(d().activity||[]).slice(0,40);mo
 function makeSnapshot(){var list=snapshots();list.unshift({id:uid('snap'),at:now(),action:'手動建立快照',data:JSON.parse(JSON.stringify(d()))});try{localStorage.setItem(SNAP_KEY,JSON.stringify(list.slice(0,6)));toast('快照已建立');openBackups()}catch(e){alert('本機空間不足，請先下載 JSON 備份。')}}
 function restoreSnapshot(index){var s=snapshots()[index];if(!s||!confirm('確定還原到 '+new Date(s.at).toLocaleString()+'？目前資料會先被自動保留。'))return;window.v6BeforeSave(d(),'還原前自動備份');localStorage.setItem(DATA_KEY,JSON.stringify(s.data));location.reload()}
 
-function showToday(type){var x=d(),list=[],title='';if(type==='tasks'){title='今天到期工作';list=(x.tasks||[]).filter(t=>t.status!=='done'&&t.dueDate&&dayDiff(t.dueDate)<=0).map(t=>({name:t.name,meta:(project(t.projectId)||{}).name||'未連結專案',action:'app.openTask(\'\',\''+esc(t.id)+'\')'}))}if(type==='confirmations'){return showTodayConfirm()}if(type==='prints'){title='需要盯的印製工單';list=(x.printWorkOrders||[]).filter(w=>w.status!=='closed'&&(w.kind==='urgent'||(w.dueDate&&dayDiff(w.dueDate)<=3))).map(w=>({name:w.title,meta:w.dueDate||'',action:'printApp.openOrder(\''+esc(w.id)+'\')'}))}if(type==='closeouts')return openCloseouts();modal(title,'從首頁直接處理，不用再逐頁尋找。','<div class="list">'+(list.map(i=>'<div class="item"><div class="row between"><div><strong>'+esc(i.name)+'</strong><div class="meta">'+esc(i.meta)+'</div></div><button class="btn" onclick="'+i.action+'">處理</button></div></div>').join('')||'<div class="empty">目前沒有項目。</div>')+'</div>',true)}
+function showToday(type){var x=d(),list=[],title='';if(type==='tasks'){title='今天要處理的工作';list=(x.tasks||[]).filter(t=>{var p=project(t.projectId),active=p&&p.workflow&&p.workflow.activeRecord;return t.status!=='done'&&((t.dueDate&&dayDiff(t.dueDate)<=0)||(t.workflowGenerated&&active&&active.collection==='tasks'&&active.id===t.id))}).map(t=>({name:t.name,meta:(project(t.projectId)||{}).name||'未連結專案',action:'app.openTask(\'\',\''+esc(t.id)+'\')'}))}if(type==='confirmations'){return showTodayConfirm()}if(type==='prints'){title='需要盯的印製工單';list=(x.printWorkOrders||[]).filter(w=>w.status!=='closed'&&(w.kind==='urgent'||(w.dueDate&&dayDiff(w.dueDate)<=3))).map(w=>({name:w.title,meta:w.dueDate||'',action:'printApp.openOrder(\''+esc(w.id)+'\')'}))}if(type==='closeouts')return openCloseouts();modal(title,'從首頁直接處理，不用再逐頁尋找。','<div class="list">'+(list.map(i=>'<div class="item"><div class="row between"><div><strong>'+esc(i.name)+'</strong><div class="meta">'+esc(i.meta)+'</div></div><button class="btn" onclick="'+i.action+'">處理</button></div></div>').join('')||'<div class="empty">目前沒有項目。</div>')+'</div>',true)}
 function showTodayConfirm(){var list=(d().confirmations||[]).filter(c=>!['confirmed','cancelled'].includes(c.status)).sort((a,b)=>age(b.askedAt||b.createdAt)-age(a.askedAt||a.createdAt));modal('加強版確認中心','依等待時間排序；不要讓很多「待確認」混成一團。','<div class="list">'+(list.map(c=>'<div class="item attention '+(age(c.askedAt||c.createdAt)>=7?'critical':'')+'"><div class="row between"><div><strong>'+esc(c.question)+'</strong><div class="meta">'+esc(c.person||'未指定')+' · 已等待 '+age(c.askedAt||c.createdAt)+' 天 · '+(c.nextFollowup?'下次追問 '+c.nextFollowup:'未設追問日')+'</div><div class="tags"><span class="tag gray">變更 '+Number(c.changeCount||0)+' 次</span><span class="tag blue">證據 '+(c.evidenceLinks||[]).length+' 筆</span></div></div><button class="btn" onclick="v6App.openConfirmation(\''+esc(c.id)+'\')">處理</button></div></div>').join('')||'<div class="empty">目前沒有待確認事項。</div>')+'</div>',true)}
 
-window.v6App={migrateData:migrate,migrateLegacyImages:migrateLegacyImages,resolveLegacyImportReviews:resolveLegacyImportReviews,correctLegacyQuantities:correctLegacyQuantities,toggleMobileActions:toggleMobileActions,runMobileAction:runMobileAction,openHub:openHub,openAssistantIntake:openAssistantIntake,openIntake:openIntake,recommend:recommend,saveIntake:saveIntake,openConfirmation:openConfirmation,saveConfirmation:saveConfirmation,snoozeConfirm:snoozeConfirm,openCloseout:openCloseout,completeCloseout:completeCloseout,openCloseouts:openCloseouts,openSearch:openSearch,runSearch:runSearch,openResult:openResult,imgSrc:imgSrc,openVersions:openVersions,renderVersions:renderVersions,addVersion:addVersion,saveVersion:saveVersion,removeVersion:removeVersion,lightbox:lightbox,zoom:zoom,lightStep:lightStep,closeLightbox:closeLightbox,compareVersions:compareVersions,drawCompare:drawCompare,openInventory:openInventory,saveInventory:saveInventory,openQuotes:openQuotes,saveQuote:saveQuote,openTemplates:openTemplates,saveTemplateSettings:saveTemplateSettings,applyTemplate:applyTemplate,createFromTemplate:createFromTemplate,openKnowledgeReview:openKnowledgeReview,markKnowledgeSorted:markKnowledgeSorted,openFileHelper:openFileHelper,makeFileName:makeFileName,copyFileResult:copyFileResult,registerFile:registerFile,openBackups:openBackups,makeSnapshot:makeSnapshot,restoreSnapshot:restoreSnapshot,showToday:showToday,showTodayConfirm:showTodayConfirm};
+window.v6App={migrateData:migrate,migrateLegacyImages:migrateLegacyImages,resolveLegacyImportReviews:resolveLegacyImportReviews,correctLegacyQuantities:correctLegacyQuantities,defaultWorkflowTemplates:defaultWorkflowTemplates,toggleMobileActions:toggleMobileActions,runMobileAction:runMobileAction,openHub:openHub,openAssistantIntake:openAssistantIntake,openIntake:openIntake,recommend:recommend,saveIntake:saveIntake,openConfirmation:openConfirmation,saveConfirmation:saveConfirmation,snoozeConfirm:snoozeConfirm,openCloseout:openCloseout,completeCloseout:completeCloseout,openCloseouts:openCloseouts,openSearch:openSearch,runSearch:runSearch,openResult:openResult,imgSrc:imgSrc,openVersions:openVersions,renderVersions:renderVersions,addVersion:addVersion,saveVersion:saveVersion,removeVersion:removeVersion,lightbox:lightbox,zoom:zoom,lightStep:lightStep,closeLightbox:closeLightbox,compareVersions:compareVersions,drawCompare:drawCompare,openInventory:openInventory,saveInventory:saveInventory,openQuotes:openQuotes,saveQuote:saveQuote,openTemplates:openTemplates,saveTemplateSettings:saveTemplateSettings,applyTemplate:applyTemplate,createFromTemplate:createFromTemplate,openKnowledgeReview:openKnowledgeReview,markKnowledgeSorted:markKnowledgeSorted,openFileHelper:openFileHelper,makeFileName:makeFileName,copyFileResult:copyFileResult,registerFile:registerFile,openBackups:openBackups,makeSnapshot:makeSnapshot,restoreSnapshot:restoreSnapshot,showToday:showToday,showTodayConfirm:showTodayConfirm};
 app.openConfirmation=openConfirmation;app.saveConfirmation=saveConfirmation;
 document.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&String(e.key).toLowerCase()==='k'){e.preventDefault();app.openCapture()}});
 addChrome();migrate();obs.observe(document.getElementById('content'),{childList:true,subtree:true});enhanceDashboard();ensureLightbox();

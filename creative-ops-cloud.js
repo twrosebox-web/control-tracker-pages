@@ -107,6 +107,12 @@ function noteDeletion(collection,id,record){
   writeTombstones(list);
 }
 
+function clearDeletion(collection,id){
+  var before=readTombstones(),after=before.filter(function(row){return !(row.collection===collection&&row.id===id)});
+  if(after.length!==before.length)writeTombstones(after);
+  return before.length-after.length;
+}
+
 function apiJsonp(action){
   return new Promise(function(resolve,reject){
     var url=apiUrl(),token=apiToken();
@@ -241,6 +247,6 @@ function start(){
   if(apiUrl()&&apiToken())syncNow();else setState('僅本機');
 }
 
-window.v6Cloud={start:start,openSettings:openSettings,syncNow:syncNow,scheduleSync:scheduleSync,noteDeletion:noteDeletion,getState:function(){return localStorage.getItem(STATE_KEY)||''}};
+window.v6Cloud={start:start,openSettings:openSettings,syncNow:syncNow,scheduleSync:scheduleSync,noteDeletion:noteDeletion,clearDeletion:clearDeletion,getState:function(){return localStorage.getItem(STATE_KEY)||''}};
 setTimeout(start,600);
 })();
