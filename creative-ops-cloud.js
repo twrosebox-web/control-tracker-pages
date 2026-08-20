@@ -113,23 +113,24 @@ function clearDeletion(collection,id){
   return before.length-after.length;
 }
 
-function apiJsonp(action){
-  return new Promise(function(resolve,reject){
-    var url=apiUrl(),token=apiToken();
-    if(!url||!token){reject(new Error('尚未設定 Apps Script 網址與安全金鑰'));return}
-    var callback='creativeOpsCloudCb_'+Date.now()+'_'+Math.random().toString(36).slice(2),script=document.createElement('script'),done=false;
-    var timeout=setTimeout(function(){finish(new Error('全平台後台讀取逾時'))},30000);
-    function finish(err,result){
-      if(done)return;done=true;clearTimeout(timeout);
-      try{delete window[callback]}catch(ignore){window[callback]=undefined}
-      if(script.parentNode)script.parentNode.removeChild(script);
-      if(err)reject(err);else if(!result||result.ok!==true)reject(new Error(result&&result.error||'後端沒有回傳成功'));else resolve(result);
-    }
-    window[callback]=function(result){finish(null,result)};
-    script.onerror=function(){finish(new Error('無法連到全平台 Apps Script'))};
-    script.src=url+'?action='+encodeURIComponent(action)+'&token='+encodeURIComponent(token)+'&callback='+encodeURIComponent(callback)+'&_='+Date.now();
-    document.head.appendChild(script);
-  });
+function apiGet(action){
+  var url=apiUrl(),token=apiToken();
+  if(!url||!token)return Promise.reject(new Error('尚未設定 Apps Script 網址與安全金鑰'));
+  var controller=typeof AbortController==='function'?new AbortController():null;
+  var timeout=setTimeout(function(){if(controller)controller.abort()},30000);
+  var requestUrl=url+(url.indexOf('?')>=0?'&':'?')+'action='+encodeURIComponent(action)+'&token='+encodeURIComponent(token)+'&_='+Date.now();
+  var options={method:'GET',mode:'cors',credentials:'omit',cache:'no-store',redirect:'follow',referrerPolicy:'no-referrer'};
+  if(controller)options.signal=controller.signal;
+  return fetch(requestUrl,options).then(function(response){
+    if(!response.ok)throw new Error('全平台後台讀取失敗（HTTP '+response.status+'）');
+    return response.json().catch(function(){throw new Error('全平台後台回應不是有效 JSON')});
+  }).then(function(result){
+    if(!result||result.ok!==true)throw new Error(result&&result.error||'後端沒有回傳成功');
+    return result;
+  }).catch(function(err){
+    if(err&&err.name==='AbortError')throw new Error('全平台後台讀取逾時');
+    throw err;
+  }).finally(function(){clearTimeout(timeout)});
 }
 
 function apiPost(action,body){
@@ -205,7 +206,7 @@ function syncOnce(){
     return Promise.resolve({ok:false,skipped:true});
   }
   setState('同步中…');
-  return apiJsonp('listWorkspace').then(function(remote){
+  return apiGet('listWorkspace').then(function(remote){
     applyRemote(remote);
     var db=app.getData(),records=flattenLocal(db),tombstones=readTombstones().filter(function(item){return SERVER_OWNED_COLLECTIONS.indexOf(item.collection)<0});
     localStorage.setItem(DATA_KEY,JSON.stringify(db));
