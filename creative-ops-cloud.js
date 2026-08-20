@@ -5,6 +5,7 @@ var DATA_KEY='creative_ops_v6_data';
 var API_URL_KEY='creative_ops_print_api_url';
 var API_TOKEN_KEY='creative_ops_print_api_token';
 var TOMBSTONE_KEY='creative_ops_v6_cloud_tombstones';
+var RESTORE_KEY='creative_ops_v6_cloud_restores';
 var STATE_KEY='creative_ops_v6_cloud_state';
 var COLLECTIONS=[
   'projects','tasks','confirmations','routines','events','products','websites',
@@ -99,17 +100,46 @@ function writeTombstones(list){
   localStorage.setItem(TOMBSTONE_KEY,JSON.stringify((list||[]).slice(-1000)));
 }
 
+function readRestores(){
+  try{return JSON.parse(localStorage.getItem(RESTORE_KEY)||'[]')}catch(err){return[]}
+}
+
+function writeRestores(list){
+  localStorage.setItem(RESTORE_KEY,JSON.stringify((list||[]).slice(-1000)));
+}
+
+function withoutMarker(list,collection,id){
+  return (list||[]).filter(function(row){return !(row.collection===collection&&String(row.id)===String(id))});
+}
+
+function acknowledgeMarkers(read,write,sent,timeField){
+  var sentTimes={};
+  (sent||[]).forEach(function(row){
+    var key=keyOf(row.collection,row.id),time=millis(row[timeField]);
+    sentTimes[key]=Math.max(sentTimes[key]||0,time);
+  });
+  write(read().filter(function(row){
+    var sentTime=sentTimes[keyOf(row.collection,row.id)];
+    return !sentTime||millis(row[timeField])>sentTime;
+  }));
+}
+
 function noteDeletion(collection,id,record){
   if(COLLECTIONS.indexOf(collection)<0||SERVER_OWNED_COLLECTIONS.indexOf(collection)>=0||!id)return;
   var list=readTombstones(),deletedAt=now(),key=keyOf(collection,id),found=list.find(function(x){return keyOf(x.collection,x.id)===key});
   if(found)found.deletedAt=deletedAt;
   else list.push({collection:collection,id:id,deletedAt:deletedAt,lastKnownUpdatedAt:record&&(record.updatedAt||record.createdAt||'')});
   writeTombstones(list);
+  writeRestores(withoutMarker(readRestores(),collection,id));
 }
 
 function clearDeletion(collection,id){
-  var before=readTombstones(),after=before.filter(function(row){return !(row.collection===collection&&row.id===id)});
+  if(COLLECTIONS.indexOf(collection)<0||SERVER_OWNED_COLLECTIONS.indexOf(collection)>=0||!id)return 0;
+  var before=readTombstones(),after=withoutMarker(before,collection,id),restoredAt=now(),restores=readRestores(),key=keyOf(collection,id),found=restores.find(function(row){return keyOf(row.collection,row.id)===key});
   if(after.length!==before.length)writeTombstones(after);
+  if(found)found.restoredAt=restoredAt;
+  else restores.push({collection:collection,id:id,restoredAt:restoredAt});
+  writeRestores(restores);
   return before.length-after.length;
 }
 
@@ -163,16 +193,18 @@ function flattenLocal(db){
 }
 
 function applyRemote(result){
-  var db=app.getData(),changed=false,localDeletes={};
+  var db=app.getData(),changed=false,localDeletes={},localRestores={};
   SERVER_OWNED_COLLECTIONS.forEach(function(collection){
     var authoritative=(result.records||[]).filter(function(item){return item.collection===collection&&item.record}).map(function(item){return item.record}),current=Array.isArray(db[collection])?db[collection]:[];
     if(JSON.stringify(current)!==JSON.stringify(authoritative)){db[collection]=authoritative;changed=true}
   });
   readTombstones().forEach(function(t){localDeletes[keyOf(t.collection,t.id)]=millis(t.deletedAt)});
+  readRestores().forEach(function(t){localRestores[keyOf(t.collection,t.id)]=millis(t.restoredAt)});
   (result.tombstones||[]).forEach(function(t){
     if(COLLECTIONS.indexOf(t.collection)<0)return;
+    if((localRestores[keyOf(t.collection,t.id)]||0)>millis(t.deletedAt))return;
     var list=Array.isArray(db[t.collection])?db[t.collection]:[],found=list.find(function(x){return String(x.id)===String(t.id)});
-    if(found&&millis(t.deletedAt)>=recordTime(found)){
+    if(found){
       db[t.collection]=list.filter(function(x){return String(x.id)!==String(t.id)});
       changed=true;
     }
@@ -187,7 +219,7 @@ function applyRemote(result){
     }
     if(COLLECTIONS.indexOf(item.collection)<0||SERVER_OWNED_COLLECTIONS.indexOf(item.collection)>=0||!item.record)return;
     var remoteTime=millis(item.updatedAt||item.record.updatedAt||item.record.createdAt||item.record.at);
-    if((localDeletes[keyOf(item.collection,item.id)]||0)>=remoteTime)return;
+    if(localDeletes[keyOf(item.collection,item.id)])return;
     var list=Array.isArray(db[item.collection])?db[item.collection]:(db[item.collection]=[]),index=list.findIndex(function(x){return String(x.id)===String(item.id)});
     if(index<0){list.push(item.record);changed=true;return}
     if(remoteTime>recordTime(list[index])){list[index]=item.record;changed=true}
@@ -208,11 +240,14 @@ function syncOnce(){
   setState('同步中…');
   return apiGet('listWorkspace').then(function(remote){
     applyRemote(remote);
-    var db=app.getData(),records=flattenLocal(db),tombstones=readTombstones().filter(function(item){return SERVER_OWNED_COLLECTIONS.indexOf(item.collection)<0});
+    var db=app.getData(),records=flattenLocal(db),tombstones=readTombstones().filter(function(item){return SERVER_OWNED_COLLECTIONS.indexOf(item.collection)<0}),restores=readRestores().filter(function(item){return SERVER_OWNED_COLLECTIONS.indexOf(item.collection)<0});
     localStorage.setItem(DATA_KEY,JSON.stringify(db));
-    return apiPost('syncWorkspace',{records:records,tombstones:tombstones});
+    return apiPost('syncWorkspace',{records:records,tombstones:tombstones,restores:restores}).then(function(result){
+      acknowledgeMarkers(readTombstones,writeTombstones,tombstones,'deletedAt');
+      acknowledgeMarkers(readRestores,writeRestores,restores,'restoredAt');
+      return result;
+    });
   }).then(function(result){
-    writeTombstones([]);
     lastHashes=snapshotHashes(app.getData());
     setState('已同步 '+new Date().toLocaleTimeString());
     return result;
